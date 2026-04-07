@@ -345,6 +345,7 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [toast, setToast] = useState(null);
+  const [subscribeChecked, setSubscribeChecked] = useState(true);
 
   // Set default date to tomorrow
   useEffect(() => {
@@ -413,24 +414,25 @@ export default function Home() {
     setEmailSending(true);
 
     try {
-      const res = await fetch('/api/email', {
+      const endpoint = subscribeChecked ? '/api/subscribe' : '/api/email';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: email,
           flights: flights.slice(0, 10),
-          searchParams: { from, to, outboundDate, returnDate, currency },
+          searchParams: { from, to, outboundDate, returnDate, currency, tripType, adults, travelClass, stops },
         }),
       });
 
       const data = await res.json();
       if (data.success) {
-        showToast(`✅ Flight deals sent to ${email}`);
+        showToast(`✅ ${subscribeChecked ? 'Subscribed and deals sent to ' : 'Flight deals sent to '}${email}`);
       } else {
         showToast(`❌ ${data.error || 'Failed to send email'}`, 'error');
       }
     } catch {
-      showToast('❌ Failed to send email', 'error');
+      showToast('❌ Failed to process request', 'error');
     }
 
     setEmailSending(false);
@@ -614,21 +616,35 @@ export default function Home() {
                   Found <span>{flights.length}</span> flights · Sorted by <span>cheapest first</span>
                 </div>
                 <div className="email-bar">
-                  <input
-                    type="email"
-                    className="form-input"
-                    placeholder="your@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    id="input-email"
-                  />
-                  <button
-                    className="btn-email"
-                    onClick={handleSendEmail}
-                    disabled={emailSending || !email}
-                  >
-                    {emailSending ? 'Sending...' : '📧 Email Deals'}
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <input
+                        type="email"
+                        className="form-input"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        id="input-email"
+                        style={{ width: '280px' }}
+                      />
+                      <button
+                        className="btn-email"
+                        onClick={handleSendEmail}
+                        disabled={emailSending || !email}
+                      >
+                        {emailSending ? 'Processing...' : '📧 Email Deals'}
+                      </button>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={subscribeChecked}
+                        onChange={(e) => setSubscribeChecked(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-primary)', cursor: 'pointer', width: '16px', height: '16px' }}
+                      />
+                      Subscribe me to automated 6-hour deal alerts for this route
+                    </label>
+                  </div>
                 </div>
               </div>
 

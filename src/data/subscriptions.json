@@ -1,0 +1,13 @@
+[
+  {
+    "email": "kartik@example.com",
+    "from": "BOM",
+    "to": "DEL",
+    "outboundDate": "2026-04-15",
+    "currency": "INR",
+    "tripType": 2,
+    "adults": 1,
+    "travelClass": 1,
+    "stops": 0
+  }
+]
