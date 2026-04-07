@@ -642,7 +642,7 @@ export default function Home() {
                         onChange={(e) => setSubscribeChecked(e.target.checked)}
                         style={{ accentColor: 'var(--accent-primary)', cursor: 'pointer', width: '16px', height: '16px' }}
                       />
-                      Subscribe me to automated 6-hour deal alerts for this route
+                      Subscribe me to automated daily deal alerts for this route
                     </label>
                   </div>
                 </div>
