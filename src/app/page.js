@@ -60,27 +60,17 @@ function AirportInput({ label, value, onChange, placeholder, id }) {
     } catch { setSuggestions([]); }
   }, []);
 
-  const extractCode = (text) => {
-    // Extract IATA code: first 2-4 uppercase letters
-    const match = text.trim().match(/^([A-Z]{2,4})/i);
-    return match ? match[1].toUpperCase() : text.trim().toUpperCase();
-  };
-
   const handleInputChange = (e) => {
     const val = e.target.value;
     setQuery(val);
     setDisplayValue(val);
-    // Always update parent with the extracted code
-    const code = extractCode(val);
-    if (code.length >= 2) onChange(code);
+    onChange(val); // Always give the parent exactly what the user is typing
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
   };
 
   const handleBlur = () => {
-    // On blur, extract and set the code
-    const code = extractCode(displayValue);
-    if (code.length >= 2) onChange(code);
+    onChange(displayValue);
   };
 
   const handleSelect = (airport) => {
