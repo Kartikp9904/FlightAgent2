@@ -5,6 +5,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 function buildEmailHTML(flights, searchParams) {
   const currencySymbol = { INR: '₹', USD: '$', CAD: 'C$', GBP: '£' }[searchParams.currency] || searchParams.currency;
 
+  const returnSuffix = searchParams.returnDate ? `%20through%20${searchParams.returnDate}` : '';
+  const deepLinkQuery = `Flights%20to%20${searchParams.to}%20from%20${searchParams.from}%20on%20${searchParams.outboundDate}${returnSuffix}`;
+  const defaultBookingUrl = `https://www.google.com/travel/flights?q=${deepLinkQuery}&curr=${searchParams.currency}&hl=en`;
+
   const flightRows = flights.map((flight, index) => {
     const segments = flight.flights || [];
     const firstSeg = segments[0] || {};
@@ -17,7 +21,7 @@ function buildEmailHTML(flights, searchParams) {
     const durationM = (flight.total_duration || 0) % 60;
     const duration = `${durationH}h ${durationM}m`;
 
-    const bookingUrl = flight._bookingUrl || `https://www.google.com/travel/flights?hl=en&curr=${searchParams.currency}`;
+    const bookingUrl = flight._bookingUrl || defaultBookingUrl;
 
     return `
       <tr style="border-bottom: 1px solid #2a2a4a;">
@@ -95,7 +99,7 @@ function buildEmailHTML(flights, searchParams) {
         <div style="text-align: center; padding: 24px; color: #64748b; font-size: 12px;">
           <p>Powered by <strong style="color: #a78bfa;">Flight Deal Hunter</strong></p>
           <p>Prices are sourced from Google Flights and may vary. Book quickly — deals don't last!</p>
-          <a href="https://www.google.com/travel/flights?hl=en&curr=${searchParams.currency}" target="_blank" style="color: #7c3aed; text-decoration: none;">
+          <a href="${defaultBookingUrl}" target="_blank" style="color: #7c3aed; text-decoration: none;">
             Search more on Google Flights →
           </a>
         </div>

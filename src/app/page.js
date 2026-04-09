@@ -27,94 +27,10 @@ function getStopsLabel(flights) {
   return `${stops} stops`;
 }
 
-// ============ AIRPORT INPUT ============
-function AirportInput({ label, value, onChange, placeholder, id }) {
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [displayValue, setDisplayValue] = useState('');
-  const debounceRef = useRef(null);
-  const wrapperRef = useRef(null);
-
-  useEffect(() => {
-    if (value && !displayValue) setDisplayValue(value);
-  }, [value, displayValue]);
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
-        setShowDropdown(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const fetchSuggestions = useCallback(async (q) => {
-    if (q.length < 2) { setSuggestions([]); return; }
-    try {
-      const res = await fetch(`/api/airports?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      setSuggestions(data.airports || []);
-      setShowDropdown(true);
-    } catch { setSuggestions([]); }
-  }, []);
-
-  const handleInputChange = (e) => {
-    const val = e.target.value;
-    setQuery(val);
-    setDisplayValue(val);
-    onChange(val); // Always give the parent exactly what the user is typing
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
-  };
-
-  const handleBlur = () => {
-    onChange(displayValue);
-  };
-
-  const handleSelect = (airport) => {
-    const code = airport.id || airport.iata;
-    const name = airport.name || '';
-    onChange(code);
-    setDisplayValue(`${code} — ${name}`);
-    setShowDropdown(false);
-    setSuggestions([]);
-  };
-
-  return (
-    <div className="form-group" ref={wrapperRef}>
-      <label className="form-label" htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="text"
-        className="form-input"
-        value={displayValue}
-        onChange={handleInputChange}
-        onBlur={handleBlur}
-        placeholder={placeholder}
-        autoComplete="off"
-      />
-      {showDropdown && suggestions.length > 0 && (
-        <div className="autocomplete-dropdown">
-          {suggestions.map((apt, i) => (
-            <div
-              key={`${apt.id || apt.iata}-${i}`}
-              className="autocomplete-item"
-              onClick={() => handleSelect(apt)}
-            >
-              <span className="airport-code">{apt.id || apt.iata}</span>
-              <span className="airport-name">{apt.name}{apt.city ? `, ${apt.city}` : ''}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// AI handles airport resolution now
 
 // ============ FLIGHT CARD ============
-function FlightCard({ flight, index, currency, onViewBooking }) {
+function FlightCard({ flight, index, currency, searchParams, onViewBooking }) {
   const [expanded, setExpanded] = useState(false);
   const [bookingOptions, setBookingOptions] = useState(null);
   const [loadingBooking, setLoadingBooking] = useState(false);
@@ -133,10 +49,18 @@ function FlightCard({ flight, index, currency, onViewBooking }) {
       const res = await fetch('/api/flights/booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingToken: flight.booking_token }),
+        body: JSON.stringify({ 
+          bookingToken: flight.booking_token,
+          from: searchParams?.from,
+          to: searchParams?.to,
+          outboundDate: searchParams?.date_start,
+          type: searchParams?.tripType || 2,
+          currency: currency
+        }),
       });
       const data = await res.json();
-      setBookingOptions(data.bookingOptions || []);
+      const sorted = (data.bookingOptions || []).sort((a, b) => (a.price || Infinity) - (b.price || Infinity));
+      setBookingOptions(sorted);
     } catch (err) {
       console.error('Booking fetch error:', err);
     }
@@ -245,18 +169,35 @@ function FlightCard({ flight, index, currency, onViewBooking }) {
                 )}
               </div>
               {bookingOptions && bookingOptions.length > 0 && (
-                <div className="booking-options-grid">
-                  {bookingOptions.map((opt, oi) => (
-                    <div key={oi} className="booking-option">
-                      <span className="booking-provider">{opt.together?.book_with || opt.book_with || `Option ${oi + 1}`}</span>
-                      {opt.price && <span className="booking-price">{formatPrice(opt.price, currency)}</span>}
-                      {(opt.booking_request?.url || opt.url) && (
-                        <a href={opt.booking_request?.url || opt.url} target="_blank" rel="noopener noreferrer" className="btn-book">
-                          Book Now →
-                        </a>
-                      )}
-                    </div>
-                  ))}
+                <div className="booking-options-grid" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {bookingOptions.map((opt, oi) => {
+                    const isCheapest = oi === 0;
+                    return (
+                      <div key={oi} className="booking-option glass-card" style={isCheapest ? { border: '2px solid #10b981', background: 'rgba(16, 185, 129, 0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '12px' } : { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="booking-provider" style={{ fontWeight: 'bold', color: 'var(--text-primary)', fontSize: '1.1rem' }}>
+                              {opt.together?.book_with || opt.book_with || `Option ${oi + 1}`}
+                            </span>
+                            {isCheapest && <span style={{ backgroundColor: '#10b981', color: '#fff', fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Best Deal</span>}
+                          </div>
+                          {opt.price && (
+                            <span className="booking-price" style={isCheapest ? { color: '#10b981', fontWeight: '900', fontSize: '1.2rem' } : { color: 'var(--text-accent)', fontWeight: 'bold' }}>
+                              {formatPrice(opt.price, currency)}
+                            </span>
+                          )}
+                        </div>
+
+                        {(opt.booking_request?.url || opt.url) && (
+                          <a href={opt.booking_request?.url || opt.url} target="_blank" rel="noopener noreferrer" className="btn-book" style={isCheapest ? { backgroundColor: '#10b981', color: '#fff', padding: '10px 20px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' } : { backgroundColor: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '8px 16px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold' }}>
+                            Checkout →
+                          </a>
+                        )}
+
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {bookingOptions && bookingOptions.length === 0 && (
@@ -311,346 +252,164 @@ function PriceInsightsPanel({ insights, currency }) {
 
 // ============ MAIN PAGE ============
 export default function Home() {
-  // Search form state
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [outboundDate, setOutboundDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
-  const [tripType, setTripType] = useState(2); // 1=round, 2=one-way
-  const [currency, setCurrency] = useState('INR');
-  const [adults, setAdults] = useState(1);
-  const [travelClass, setTravelClass] = useState(1);
-  const [stops, setStops] = useState(0);
-  const [maxPrice, setMaxPrice] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Results state
-  const [flights, setFlights] = useState([]);
-  const [priceInsights, setPriceInsights] = useState(null);
+  // AI Prompt State
+  const [prompt, setPrompt] = useState('Find the cheapest flight from Ahmedabad to Dubai between 10th-20th May');
+  const [email, setEmail] = useState('');
+  
+  // Results / UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [parsedData, setParsedData] = useState(null);
+  const [cheapestFlight, setCheapestFlight] = useState(null);
   const [searched, setSearched] = useState(false);
-
-  // Email state
-  const [email, setEmail] = useState('');
-  const [emailSending, setEmailSending] = useState(false);
+  
   const [toast, setToast] = useState(null);
-  const [subscribeChecked, setSubscribeChecked] = useState(true);
-
-  // Set default date to tomorrow
-  useEffect(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setOutboundDate(tomorrow.toISOString().split('T')[0]);
-  }, []);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleSearch = async (e) => {
+  const handlePlanFlight = async (e) => {
     e.preventDefault();
-    if (!from || !to || !outboundDate) {
-      setError('Please fill in departure, arrival, and date');
+    if (!prompt || !email) {
+      setError('Please provide both a prompt and your email address.');
       return;
     }
 
     setLoading(true);
     setError('');
-    setFlights([]);
-    setPriceInsights(null);
+    setSuccessMsg('');
+    setParsedData(null);
+    setCheapestFlight(null);
     setSearched(true);
 
     try {
-      const res = await fetch('/api/flights/search', {
+      const res = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from,
-          to,
-          outboundDate,
-          returnDate: tripType === 1 ? returnDate : undefined,
-          tripType,
-          adults,
-          travelClass,
-          currency,
-          stops,
-          maxPrice: maxPrice || undefined,
-        }),
+        body: JSON.stringify({ prompt, email }),
       });
 
       const data = await res.json();
 
-      if (data.error) {
-        setError(data.error);
+      if (!res.ok || data.error) {
+        setError(data.error || 'Failed to analyze flight request.');
       } else {
-        setFlights(data.flights || []);
-        setPriceInsights(data.priceInsights);
-        if (!data.flights?.length) {
-          setError('No flights found for this route. Try different dates or airports.');
-        }
+        setSuccessMsg(data.message);
+        setParsedData(data.data);
+        setCheapestFlight(data.cheapestFlight);
+        showToast('✅ Analysis complete! Deal sent to your email.');
       }
     } catch (err) {
-      setError('Search failed. Please try again.');
+      setError('An unexpected error occurred. Please try again.');
       console.error(err);
     }
 
     setLoading(false);
   };
 
-  const handleSendEmail = async () => {
-    if (!email || flights.length === 0) return;
-    setEmailSending(true);
-
-    try {
-      const endpoint = subscribeChecked ? '/api/subscribe' : '/api/email';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: email,
-          flights: flights.slice(0, 10),
-          searchParams: { from, to, outboundDate, returnDate, currency, tripType, adults, travelClass, stops },
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✅ ${subscribeChecked ? 'Subscribed and deals sent to ' : 'Flight deals sent to '}${email}`);
-      } else {
-        showToast(`❌ ${data.error || 'Failed to send email'}`, 'error');
-      }
-    } catch {
-      showToast('❌ Failed to process request', 'error');
-    }
-
-    setEmailSending(false);
-  };
-
-  const today = new Date().toISOString().split('T')[0];
-
   return (
-    <div className="bg-gradient-hero" style={{ minHeight: '100vh' }}>
+    <div className="bg-gradient-hero" style={{ minHeight: '100vh', paddingBottom: '60px' }}>
       {/* Hero */}
       <section className="hero">
-        <div className="hero-icon">✈️</div>
-        <h1 className="hero-title animate-fade-in-up">Find The Cheapest Flights Instantly</h1>
-        <p className="hero-subtitle animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-          Stop wasting hours searching. We find the best deals and send them to your inbox with real booking links.
+        <div className="hero-icon">🤖</div>
+        <h1 className="hero-title animate-fade-in-up">AI Flight Planner</h1>
+        <p className="hero-subtitle animate-fade-in-up" style={{ animationDelay: '0.1s', maxWidth: '600px', margin: '0 auto 20px auto' }}>
+          Tell the AI your travel plans. It finds the single absolute cheapest flight and continuously tracks it for you.
         </p>
       </section>
 
-      {/* Search Form */}
+      {/* AI Prompt Box */}
       <section className="search-section container">
-        <form className="search-card glass-card animate-fade-in-up" style={{ animationDelay: '0.2s' }} onSubmit={handleSearch}>
-          {/* Trip Type Toggle */}
-          <div style={{ marginBottom: '24px' }}>
-            <div className="trip-toggle" style={{ maxWidth: '300px' }}>
-              <button type="button" className={`trip-toggle-btn ${tripType === 2 ? 'active' : ''}`} onClick={() => setTripType(2)}>
-                One Way
-              </button>
-              <button type="button" className={`trip-toggle-btn ${tripType === 1 ? 'active' : ''}`} onClick={() => setTripType(1)}>
-                Round Trip
-              </button>
-            </div>
+        <form className="search-card glass-card animate-fade-in-up" style={{ animationDelay: '0.2s', display: 'flex', flexDirection: 'column', gap: '20px' }} onSubmit={handlePlanFlight}>
+          
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label" style={{ fontSize: '1.1rem', marginBottom: '12px' }}>
+              Where do you want to fly?
+            </label>
+            <textarea
+              className="form-input"
+              rows={3}
+              style={{ padding: '16px', fontSize: '1.1rem', resize: 'vertical' }}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g. Find the cheapest flight from Ahmedabad to Dubai between 10th-20th May"
+            />
           </div>
 
-          <div className="form-grid">
-            <AirportInput
-              label="From"
-              value={from}
-              onChange={setFrom}
-              placeholder="e.g. BOM, DEL, JFK"
-              id="input-from"
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Your Email (to receive the deal & tracking updates)</label>
+            <input
+              type="email"
+              className="form-input"
+              style={{ maxWidth: '400px' }}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
             />
-
-            <AirportInput
-              label="To"
-              value={to}
-              onChange={setTo}
-              placeholder="e.g. LHR, DXB, SIN"
-              id="input-to"
-            />
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="input-outbound">Departure Date</label>
-              <input
-                id="input-outbound"
-                type="date"
-                className="form-input"
-                value={outboundDate}
-                onChange={(e) => setOutboundDate(e.target.value)}
-                min={today}
-              />
-            </div>
-
-            {tripType === 1 && (
-              <div className="form-group">
-                <label className="form-label" htmlFor="input-return">Return Date</label>
-                <input
-                  id="input-return"
-                  type="date"
-                  className="form-input"
-                  value={returnDate}
-                  onChange={(e) => setReturnDate(e.target.value)}
-                  min={outboundDate || today}
-                />
-              </div>
-            )}
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="input-currency">Currency</label>
-              <select id="input-currency" className="form-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                <option value="INR">🇮🇳 INR (₹)</option>
-                <option value="USD">🇺🇸 USD ($)</option>
-                <option value="CAD">🇨🇦 CAD (C$)</option>
-                <option value="GBP">🇬🇧 GBP (£)</option>
-              </select>
-            </div>
-
-            {tripType !== 1 && <div></div>}
-
-            {/* Advanced Filters */}
-            <div className="full-width">
-              <div className="filters-toggle">
-                <button
-                  type="button"
-                  className="filters-toggle-btn"
-                  onClick={() => setShowFilters(!showFilters)}
-                >
-                  {showFilters ? '▾ Hide Filters' : '▸ Advanced Filters'}
-                </button>
-              </div>
-
-              {showFilters && (
-                <div className="advanced-filters">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="input-adults">Passengers</label>
-                    <select id="input-adults" className="form-select" value={adults} onChange={(e) => setAdults(Number(e.target.value))}>
-                      {[1,2,3,4,5,6,7,8,9].map(n => (
-                        <option key={n} value={n}>{n} Adult{n > 1 ? 's' : ''}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="input-class">Travel Class</label>
-                    <select id="input-class" className="form-select" value={travelClass} onChange={(e) => setTravelClass(Number(e.target.value))}>
-                      <option value={1}>Economy</option>
-                      <option value={2}>Premium Economy</option>
-                      <option value={3}>Business</option>
-                      <option value={4}>First</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="input-stops">Stops</label>
-                    <select id="input-stops" className="form-select" value={stops} onChange={(e) => setStops(Number(e.target.value))}>
-                      <option value={0}>Any</option>
-                      <option value={1}>Nonstop only</option>
-                      <option value={2}>1 stop or fewer</option>
-                      <option value={3}>2 stops or fewer</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="input-maxprice">Max Price</label>
-                    <input
-                      id="input-maxprice"
-                      type="number"
-                      className="form-input"
-                      value={maxPrice}
-                      onChange={(e) => setMaxPrice(e.target.value)}
-                      placeholder="No limit"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button type="submit" className="btn-search" disabled={loading}>
-              {loading && <span className="spinner"></span>}
-              {loading ? 'Searching Flights...' : '🔍 Search Cheapest Flights'}
-            </button>
           </div>
+
+          <button type="submit" className="btn-search" disabled={loading} style={{ marginTop: '10px' }}>
+            {loading && <span className="spinner"></span>}
+            {loading ? '🧠 AI is Analyzing & Searching...' : '✨ Plan & Track My Flight'}
+          </button>
         </form>
       </section>
 
-      {/* Results */}
+      {/* Results Section */}
       {searched && (
-        <section className="results-section container">
-          {/* Error */}
+        <section className="results-section container" style={{ marginTop: '40px' }}>
+          
+          {loading && (
+            <div className="animate-fade-in" style={{ textAlign: 'center', padding: '40px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '20px' }}>⏳</div>
+              <h3 style={{ color: 'var(--text-primary)' }}>Parsing your request with Gemini Model...</h3>
+              <p style={{ color: 'var(--text-muted)' }}>We are analyzing your dates and finding the absolute cheapest flight.</p>
+              <div className="skeleton skeleton-card" style={{ marginTop: '30px' }}></div>
+            </div>
+          )}
+
           {error && !loading && (
             <div className="no-results animate-fade-in">
-              <div className="no-results-icon">😔</div>
-              <h3>No Flights Found</h3>
+              <div className="no-results-icon">🤔</div>
+              <h3>AI Could Not Find Flights</h3>
               <p>{error}</p>
             </div>
           )}
 
-          {/* Loading Skeletons */}
-          {loading && (
-            <div className="animate-fade-in">
-              {[1,2,3,4,5].map(i => (
-                <div key={i} className="skeleton skeleton-card" style={{ animationDelay: `${i * 0.1}s` }}></div>
-              ))}
-            </div>
-          )}
-
-          {/* Results Header + Email */}
-          {flights.length > 0 && !loading && (
-            <>
-              <div className="results-header animate-fade-in-up">
-                <div className="results-count">
-                  Found <span>{flights.length}</span> flights · Sorted by <span>cheapest first</span>
+          {parsedData && cheapestFlight && !loading && (
+            <div className="animate-fade-in-up">
+              
+              <div className="results-header" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ padding: '15px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', color: '#10b981' }}>
+                  <strong>{successMsg}</strong>
                 </div>
-                <div className="email-bar">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <input
-                        type="email"
-                        className="form-input"
-                        placeholder="your@email.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        id="input-email"
-                        style={{ width: '280px' }}
-                      />
-                      <button
-                        className="btn-email"
-                        onClick={handleSendEmail}
-                        disabled={emailSending || !email}
-                      >
-                        {emailSending ? 'Processing...' : '📧 Email Deals'}
-                      </button>
-                    </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={subscribeChecked}
-                        onChange={(e) => setSubscribeChecked(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-primary)', cursor: 'pointer', width: '16px', height: '16px' }}
-                      />
-                      Subscribe me to automated daily deal alerts for this route
-                    </label>
-                  </div>
+                
+                <div className="glass-card" style={{ padding: '20px', borderRadius: '12px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: 'var(--text-accent)' }}>🧠 AI Extracted Itinerary:</h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, color: 'var(--text-secondary)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <li><strong>Origin:</strong> {parsedData.from}</li>
+                    <li><strong>Destination:</strong> {parsedData.to}</li>
+                    <li><strong>Start Date:</strong> {parsedData.date_start}</li>
+                    <li><strong>End Date:</strong> {parsedData.date_end}</li>
+                  </ul>
+                  <p style={{ marginTop: '15px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Our automated agent will now check this exact route daily. If a flight drops below the current lowest price, we will email you immediately.
+                  </p>
                 </div>
               </div>
 
-              {/* Price Insights */}
-              <PriceInsightsPanel insights={priceInsights} currency={currency} />
-
-              {/* Flight Cards */}
-              {flights.map((flight, i) => (
-                <FlightCard
-                  key={`${flight.booking_token || flight.departure_token || i}`}
-                  flight={flight}
-                  index={i}
-                  currency={currency}
-                />
-              ))}
-            </>
+              <h3 style={{ margin: '30px 0 20px 0', color: 'var(--text-primary)', textAlign: 'center' }}>🏆 Absolute Cheapest Flight Found</h3>
+              
+              <FlightCard
+                flight={cheapestFlight}
+                index={0}
+                currency={parsedData.currency}
+                searchParams={parsedData}
+              />
+            </div>
           )}
         </section>
       )}
@@ -663,9 +422,9 @@ export default function Home() {
       )}
 
       {/* Footer */}
-      <footer style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-        <p>Powered by <strong style={{ color: 'var(--text-accent)' }}>Flight Deal Hunter</strong> · Data from Google Flights via SerpAPI</p>
-        <p style={{ marginTop: '4px' }}>Prices may vary. Always verify on the airline&apos;s website before booking.</p>
+      <footer style={{ textAlign: 'center', padding: '40px 20px', marginTop: '40px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+        <p>Powered by <strong style={{ color: 'var(--text-accent)' }}>Gemini AI</strong> & <strong style={{ color: 'var(--text-accent)' }}>Flight Deal Tracker</strong></p>
+        <p style={{ marginTop: '4px' }}>Automated Daily Cron Tracking Active.</p>
       </footer>
     </div>
   );

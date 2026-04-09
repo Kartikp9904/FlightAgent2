@@ -71,11 +71,16 @@ export async function searchFlights({
   }
 }
 
-export async function getBookingOptions(bookingToken) {
+export async function getBookingOptions({ bookingToken, from, to, outboundDate, type = 2, currency = 'INR' }) {
   try {
     const params = {
       engine: 'google_flights',
       api_key: process.env.SERPAPI_KEY,
+      departure_id: from,
+      arrival_id: to,
+      outbound_date: outboundDate,
+      type,
+      currency,
       booking_token: bookingToken,
       hl: 'en',
     };
